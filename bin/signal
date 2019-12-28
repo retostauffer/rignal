@@ -1,0 +1,72 @@
+#!/bin/bash
+
+USER="+436803328544"
+OUTDIR="messages"
+
+if [ $# -le 0 ] ; then
+  printf "Input arguments needed"
+  exit 9
+fi
+
+CMD=$1
+if [ $CMD == "get" ] ; then
+  NOW=`date "+%s"`
+  DIR=`dirname $0`
+  DIR=`printf "%s/%s" "${DIR}" "${OUTDIR}"`
+  if [ ! -d ${DIR} ] ; then mkdir "${DIR}"; fi
+  if [ ! -d ${DIR} ] ; then
+    printf "Cannot create output directory\n"
+    exit 3;
+  fi
+  FILE=`printf "%s/get_%d.msg" "${DIR}" ${NOW}`
+  signal-cli -u ${USER} receive > "${FILE}"
+
+  # File size 0? Delete output file, drop message, stop 0.
+  FILESIZE=`ls -l "${FILE}"  | awk '{print $5}'`
+  if [ $FILESIZE -eq 0 ] ; then
+    rm "${FILE}"
+    printf "No new messages, leave ...\n"
+    exit 0
+  else
+    printf "Got message (\"%s\")\n" "${FILE}"
+  fi
+fi
+
+
+#################################
+if [ $CMD == "send" ] ; then
+  if [ $# -eq 1 ] ; then
+    printf "Sending message to ...\n"
+    printf "Enter phone number:   "; read number
+    printf "Enter message:        "; read msg
+
+  elif [ $# -ge 3 ] ; then
+    number=$2
+    msg=$3
+    att=""
+  fi
+  if [ $# -ge 4 ] ; then
+    att=$4
+    if [ ! -f $att ] ; then
+      print "Attachment \"%s\" does not exist.\n" "${att}"
+      stop 9
+    fi
+    printf "[info] Attachment \"%s\"\n" "${att}"
+  fi
+
+  # Send
+  if [ ${#number} -gt 0 ] && [ ${#msg} -gt 0 ] ; then
+    if [ ${#att} -eq 0 ] ; then
+      printf "  Send: \"%s\" to \"%s\"\n" "${msg}" "${number}"
+      signal-cli -u ${USER} send -m "${msg}" ${number}
+    else
+      printf "  Send: \"%s\" to \"%s\",\n" "${msg}" "${number}"
+      printf "  Attaching \"%s\"\n" "${att}"
+      signal-cli -u ${USER} send -m "${msg}" ${number} -a "${att}" -e
+    fi
+  fi
+fi
+
+
+
+
