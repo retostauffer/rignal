@@ -54,7 +54,8 @@ if __name__ == "__main__":
     from msghandlerClass import msghandler
     
     db  = msgdb(verbose = verbose)
-    obj = msghandler("testmessages", verbose)
+    #obj = msghandler("messages", verbose)
+    obj = msghandler(["sentmessages", "messages"], verbose)
 
     # Loading all users from the database
     if args.userlist and args.json:

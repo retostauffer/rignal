@@ -59,6 +59,15 @@
 }
 #messages ul li.sent {
     display: block;
-    background-color: #003311;
+    background-color: yellow;
     padding-left: 10%;
+}
+
+/* -------------------------------------------- */
+/* Attachments */
+
+.message-attachments img {
+    max-width: 80%;
+    border: 1px solid gray;
+    padding: .5em;
 }

@@ -29,9 +29,12 @@ class msgparser:
         [logger.debug(x) for x in msg.split("\n")]
         logger.debug("--------------------")
 
+        # Sent or received message? From/to whom?
+        self._sent,self._number       = self._get_sent_and_number()
+
+        # Rest ...
         self._action       = self._get_action()
         self._receiver     = 0;
-        self._number       = self._get_number()
         self._timestamp    = self._get_timestamp()
         self._msgtimestamp = self._get_msgtimestamp()
         if self._action in ["RECEIPT", "STARTED", "STOPPED", "DELIVER"]:
@@ -86,6 +89,7 @@ class msgparser:
             res = None
         return(res)
 
+
     def _get_action(self):
         """Extract action from envelope"""
 
@@ -105,13 +109,23 @@ class msgparser:
         logger.debug("---------------------- {:s}\n".format(tmp[0].strip()))
         return(tmp[0].strip())
 
-    def _get_number(self):
-        """Extract number from envelope"""
-        tmp = re.findall("Envelope from:\s+(\+[0-9]+)", self.msg)
+    def _get_sent_and_number(self):
+        """self._get_sent_and_number()
+        
+        Extract number from envelope
+
+        Return
+        ======
+        Returns a list with a boolean (True if this is a message sent to
+        someone, False if received) and the number of the receiver.
+        """
+        #if re.findall("Envelope to:\s+(\+[0-9]+)", self.msg):
+        tmp = re.findall("Envelope (from|to):\s+([^\s]+)", self.msg)
+
         if not len(tmp) == 1:
             logger.error(self.msg)
-            raise Exception("Found \"from\" (sender) != 1 times!")
-        return(tmp[0])
+            raise Exception("Found \"from\" (sender) {0:d} times (expected: once)".format(len(tmp)))
+        return([True if tmp[0][0] == "to" else False, tmp[0][1]])
 
     def _get_timestamp(self):
         """Extract timestamp from envelope"""
@@ -192,13 +206,20 @@ class msgparser:
 class msgattachment:
     def __init__(self, mime, path):
 
-        self.mime = mime
-        self.path = path
+        self._mime = mime
+        self._path = path
+
     def get(self, key):
         try:
-            res = getattr(self, key)
+            res = getattr(self, "_{0:}".format(key))
         except:
             res = None
+        return(res)
+
+    def __repr__(self):
+        res = "Attachment information:\n"
+        res += "  Mime:    {:s}\n".format(self._mime)
+        res += "  Path:    {:s}\n".format(self._path)
         return(res)
 
 
@@ -224,9 +245,9 @@ class msggroupinfo:
 
     def _get_id(self):
         from re import findall
-        tmp = findall("Id:\s(.*)==", self.msg)
+        tmp = findall("Id:\s(.*==)", self.msg)
         if len(tmp) != 1:
-            print(msg)
+            print(self.msg)
             raise Exception("problems to extract group ID")
         return(tmp[0])
 

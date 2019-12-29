@@ -1,6 +1,9 @@
 
 
 import sqlite3
+import logging
+logger = logging.getLogger("rignal")
+
 
 class msgdb:
 
@@ -18,7 +21,7 @@ class msgdb:
 
         self._check_usertable()
         self._check_messagetable()
-        self._check_groupstable()
+        self._check_attachmenttable()
         self._check_groupmemberstable()
 
     # ------------------------------------------------------------------
@@ -53,32 +56,17 @@ class msgdb:
             raise ValueError("input to update_group needs to be a msgparser instance")
 
         grp = msg.get("group")
-
-        sql1 = "INSERT OR IGNORE INTO groups (id, name, timestamp) VALUES ('{0:s}', '{1:s}', {2:d});"
-        sql2 = "UPDATE groups SET name = '{1:s}', timestamp = {2:d} WHERE id = '{0:s}';"
-        sql1 = sql1.format(grp.get("id"), grp.get("name"), msg.get("timestamp"))
-        sql2 = sql2.format(grp.get("id"), grp.get("name"), msg.get("timestamp"))
+        # groups are handled as users.
+        groupID = self.get_userID(grp.get("id"), grp.get("name"))
 
         cur = self.con.cursor()
-        try:
-            cur.execute(sql1)
-            cur.execute(sql2)
-            self.con.commit()
-        except Exception as e:
-            print(e)
-            raise Exception("Problems adding new message")
-
         # Members?
         if len(grp.get("members")) > 0:
-            groupID = cur.execute("SELECT groupID FROM groups WHERE id = '{0:s}';".format(grp.get("id")))
-            groupID = groupID.fetchone()[0]
-
             for mem in grp.get("members"):
                 userID = self.get_userID(mem)
                 sql = "INSERT OR IGNORE INTO groupmembers VALUES ({0:d}, {1:d})".format(groupID, userID)
-                print(sql)
                 cur.execute(sql)
-            self.con.commit()
+        self.con.commit()
 
     # ------------------------------------------------------------------
     # ------------------------------------------------------------------
@@ -100,24 +88,70 @@ class msgdb:
         if not isinstance(msg, msgparser):
             raise ValueError("input to add_message needs to be a msgparser instance")
 
-        # Else add to database.
-        userID = self.get_userID(msg.get("number"))
+        # If this message has group information the message is related
+        # to a specific group (not a single user). Instead of using the
+        # number of the sender/receiver, use group ID to store the message.
+        if not msg.get("group") is None:
+            userID = self.get_userID(msg.get("group").get("id"))
+        # Else single user message
+        else:
+            userID = self.get_userID(msg.get("number"))
         self._add_message(userID, msg)
+
+
+    def _add_attachments(self, att, sent):
+        """self._add_attachment(att, sent)
+
+        Parameters
+        ==========
+        att : list of msgattachment object
+            The attachment information object.
+        sent : bool
+            True for sent attachemnts, False for received ones.
+
+        Return
+        ======
+        Saves attachment information into database and returns
+        the attachment ID's as integer list.
+        """
+
+        from os.path import basename
+        from msgparserClass import msgattachment
+
+        if not isinstance(sent, bool):
+            raise ValueError("sent must be boolean True or False")
+
+        cur = self.con.cursor()
+        sql = "INSERT OR IGNORE INTO attachments (mime, sent, name) VALUES (\"{0:s}\", {1:d}, \"{2:s}\")"
+        for rec in att:
+            if not isinstance(rec, msgattachment):
+                raise ValueError("att must be of instance msgattachment")
+            cur.execute(sql.format(rec.get("mime"), 1 if sent else 0, basename(rec.get("path"))))
+
+        # Fetch ID's
+        sql = "SELECT attachmentID FROM attachments WHERE sent = {0:d} AND name IN ({1:s})"
+        names = ["\"{0:s}\"".format(basename(rec.get("path"))) for rec in att]
+        cur.execute(sql.format(1 if sent else 0, ", ".join(names)))
+        res = [x[0] for x in cur.fetchall()]
+
+        return(res)
 
 
     def _add_message(self, userID, msg):
 
-        import sys
+        from json import dumps
         att  = msg.get("attachments")
-        att  = len(att) if not att is None else 0
-        sql  = "INSERT OR IGNORE INTO messages (userID, receiver, timestamp, body, attachments) VALUES "
-        sql += "({:d}, {:d}, {:d}, \"{:s}\", {:d});".format(userID, msg.get("receiver"), msg.get("timestamp"),
-                   msg.get("body"), att)
-        sql  = "INSERT OR IGNORE INTO messages (userID, timestamp, body, attachments) VALUES "
-        sql += "(?, ?, ?, ?);"
-        
-        data = (userID, msg.get("timestamp"), msg.get("body"), att)
 
+        # Attachment ID's are stored as json array
+        if att is not None:
+            att = self._add_attachments(att, msg.get("sent"))
+        else:
+            att = []
+
+        sql  = "INSERT OR IGNORE INTO messages (userID, sent, timestamp, body, attachments) VALUES "
+        sql += "(?, ?, ?, ?, ?);"
+        
+        data = (userID, msg.get("sent"), msg.get("timestamp"), msg.get("body"), dumps(att))
         
         cur = self.con.cursor()
         cur.execute(sql, data)
@@ -166,12 +200,13 @@ class msgdb:
             exists = False
 
         if not exists:
-            if self.verbose: print("Create messages database table")
+            logger.debug("Create messages database table")
 
             sql = """CREATE TABLE messages (
                     userID INTEGER NOT NULL,
+                    sent INTEGER NOT NULL,
                     receiver INTEGER, timestamp INTEGER NOT NULL, body text,
-                    attachments INTEGER,
+                    attachments TEXT DEFAULT NULL,
                     CONSTRAINT msg UNIQUE (userID, timestamp)
                   )"""
             try:
@@ -180,35 +215,34 @@ class msgdb:
                 print(e)
                 raise Exception("Problems creating messages table!")
 
-
     # ------------------------------------------------------------------
     # ------------------------------------------------------------------
-    def _check_groupstable(self):
+    def _check_attachmenttable(self):
 
         cur = self.con.cursor()
         try:
-            cur.execute("SELECT * FROM groups LIMIT 1;")
+            cur.execute("SELECT * FROM attachments LIMIT 1;")
             exists = True
         except:
             exists = False
 
         if not exists:
-            if self.verbose: print("Create groups database table")
+            logger.debug("Create attachments database table")
 
-            sql = """CREATE TABLE groups (
-                    groupID INTEGER PRIMARY KEY AUTOINCREMENT,
-                    id TEXT NOT NULL,
+            sql = """CREATE TABLE attachments (
+                    attachmentID INTEGER PRIMARY KEY AUTOINCREMENT,
+                    mime TEXT NOT NULL,
+                    sent INT NOT NULL,
                     name TEXT NOT NULL,
-                    timestamp INTEGER NOT NULL,
-                    avatar TEXT,
-                    CONSTRAINT gid UNIQUE (id)
+                    CONSTRAINT att UNIQUE (sent, name)
                   )"""
             try:
                 cur.execute(sql)
             except Exception as e:
                 print(e)
-                raise Exception("Problems creating groups table!")
-            
+                raise Exception("Problems creating attachment table!")
+
+
 
     # ------------------------------------------------------------------
     # ------------------------------------------------------------------
@@ -238,8 +272,8 @@ class msgdb:
 
     # ------------------------------------------------------------------
     # ------------------------------------------------------------------
-    def get_userID(self, number, create = True):
-        """get_user_id(number)
+    def get_userID(self, number, name = None, create = True):
+        """get_userID(number, name = None, create = True)
 
         Get userID for a specific phone number.
 
@@ -247,6 +281,8 @@ class msgdb:
         ==========
         number : str
             string, phone number (with leading +)
+        name : str
+            string, name of the person/group. Default is None (no name).
         create : bool
             whether or not the user should be created if not yet existing.
 
@@ -270,7 +306,10 @@ class msgdb:
             raise Exception("Cannot find user for \"{:s}\"".format(number))
         # user not found? Add!
         elif len(res) == 0:
-            sql = "INSERT INTO users (number) VALUES (\"{:s}\");".format(number)
+            if name is None:
+                sql = "INSERT INTO users (number) VALUES (\"{:s}\");".format(number)
+            else:
+                sql = "INSERT INTO users (number, name) VALUES (\"{:s}\", \"{:s}\");".format(number, name)
             try:
                 cur.execute(sql)
                 self.con.commit()
@@ -283,7 +322,7 @@ class msgdb:
         else:
             res = res[0][0]
 
-        return(res)
+        return(int(res))
 
 
 
@@ -344,7 +383,7 @@ class msgdb:
         res = self.con.cursor().execute(sql)
         col = [x[0] for x in res.description]
 
-        data = msgs()
+        data = msgs(self.con)
         for rec in res.fetchall():
             msg = {}
             for i in range(0, len(rec)): msg[col[i]] = rec[i]
@@ -385,10 +424,20 @@ class msgdb:
 # --------------------------------------------------------------------
 # --------------------------------------------------------------------
 class msgs:
-    def __init__(self):
+    """msgs(con)
+
+    Parameters
+    ==========
+    con : sqlite3 connection handler
+    """
+
+    def __init__(self, con):
         self._data = []
+        self.con = con
+
     def __repr__(self):
         return("Message list, contains {:d} messages.".format(len(self._data)))
+
     def add(self, msg):
         """add(msg)
 
@@ -398,6 +447,25 @@ class msgs:
         """
         if not isinstance(msg, dict):
             raise ValueError("input must be a (well defined) dict!")
+
+        from json import JSONDecoder
+        d = JSONDecoder()
+        att = d.decode(msg.get("attachments"))
+
+        # Loading file information from database
+        if len(att) > 0:
+            sql = "SELECT * FROM attachments WHERE attachmentID IN ({0:s})".format(
+                    ", ".join(["{:d}".format(x) for x in att]))
+            cur = self.con.cursor()
+            cur.execute(sql)
+            desc = [x[0] for x in cur.description]
+            msg["attachments"] = []
+            for row in cur.fetchall():
+                tmp = {}
+                for i in enumerate(desc): tmp[i[1]] = row[i[0]]
+                msg["attachments"].append(tmp)
+        else:
+            msg["attachments"] = []
 
         self._data.append(msg)
         ### TODO some checks

@@ -10,6 +10,7 @@
   <script src="js/jquery-ui.min.js"></script>
   <script src="js/popper.min.js"></script>
   <script src="js/bootstrap.min.js"></script>
+  <script src="js/simpleUpload.min.js"></script>
   <script src="js/rignal.js"></script>
   <script>
   $(document).ready(function() {

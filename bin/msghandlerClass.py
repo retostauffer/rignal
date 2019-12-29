@@ -8,8 +8,10 @@ class msghandler:
         import sys
         import os
 
-        if not os.path.isdir(dir):
-            raise Exception("Directory \"{0:s}\" not found!".format(dir))
+        if len(dir) == 1: dir = [dir]
+        for d in dir:
+            if not os.path.isdir(d):
+                raise Exception("Directory \"{0:s}\" not found!".format(d))
         self.dir = dir
         self.verbose = verbose
 
@@ -40,16 +42,17 @@ class msghandler:
         from glob import glob
         import os
         import re
-        tmp = glob(os.path.join(self.dir, "*"))
+        tmp = []
+        for d in self.dir:
+            tmp += glob(os.path.join(d, "*"))
+
         # Filter messages 
         files = []
-        pat   = re.compile("^get_[0-9]+\\.msg$")
+        pat   = re.compile("^.*/(sent|get)_[0-9]+\\.msg$")
         for x in tmp:
-            x = os.path.basename(x)
             if pat.match(x): files.append(x)
 
         files.sort()
-
         return(files)
 
 
@@ -72,7 +75,7 @@ class msghandler:
         import re
 
         # full file name
-        file = os.path.join(self.dir, file)
+        #file = os.path.join(self.dir, file)
         fid = open(file, "r", encoding = "utf-8")
         tmp = fid.readlines()
         fid.close()

@@ -41,10 +41,36 @@
             $("#messages").empty().append("<ul></ul>");
             var cls = "undefined";
             $.each(msgs, function(k, msg) {
+
                 var time = timestamp_to_str(msg.timestamp);
-                if (msg.receiver == null) { cls = "received"; } else { cls = "sent"; }
+
+                if (msg.sent != "1") { cls = "received"; } else { cls = "sent"; }
+
+                /* Crete attachments output */
+                var attachments = ""
+                if (msg.attachments.length > 0) {
+                    $.each(msg.attachments, function(k, att) {
+                        if (parseInt(att.sent) == 1) {
+                            var dir = "uploads";
+                        } else {
+                            var dir = "attachments";
+                        }
+                        if (att.mime == "image/jpeg") {
+                            tmp = "<img src=\"" + dir + "/" + att.name + "\" />"
+                            attachments += tmp
+                        }
+                    });
+                    /* Final html markup */
+                    attachments = "<span class=\"message-attachments\">"
+                                + attachments
+                                + "</span><br>"
+
+                }
+
+                /* Create final markup */
                 $("#messages ul").append("<li class=\"" + cls + "\">"
                     +"<span class=\"message-text\">" + msg.body + "</span><br>"
+                    +attachments
                     +"<span class=\"time\">" + time + "</span></li>");
             });
         }
@@ -59,6 +85,40 @@
                 .append("<input type=\"hidden\" name=\"receiverID\" value=\"" + userID + "\" />")
                 .append("<input type=\"button\" name=\"send\" value=\"SEND\" />")
                 .append("<input style=\"margin-left: 1em;\" type=\"checkbox\" name=\"hot\" value=\"hot\" /> hot?")
+                .append("<div>Receiver: " + number + "</div>")
+                .append("<input type = \"file\" name = \"upload\" />")
+                .append("<span id = \"attached-file\" />")
+
+            // simpleUpload functionality
+            $("#send > form > input[name='upload']").on("change", function() {
+                $(this).simpleUpload("fileupload.php", {
+                    start: function(file){
+                        //upload started
+                        console.log("upload started");
+                    },
+                    //progress: function(progress){
+                    //    //received progress
+                    //    console.log("upload progress: " + Math.round(progress) + "%");
+                    //},
+                    success: function(data){
+                        //upload successful
+                        console.log("upload successful!");
+                        console.log(data);
+                        console.log(data.success)
+                        if (data.success) {
+                            $("#attached-file").html("<b>Attached file: <i>" + data.filename + "</i></b>")
+                            $("#attached-file").attr("filename", data.filename)
+                        } else {
+                            alert("Whoops, problem with file upload (got non-success return from php)");
+                        }
+                    },
+                    //error: function(error){
+                    //    //upload failed
+                    //    console.log("upload error: " + error.name + ": " + error.message);
+                    //}
+                });
+            });
+
             // Show form
             $("#send").show();
 
@@ -98,11 +158,19 @@
          * TODO: development JSON
          */
         function send_data(sender, receiver, message) {
-            var data = {sender: sender, receiver: receiver, message: message}
+
+            // Check if we have an attachment
+            if ($("#attached-file").length == 1) {
+                var attachment = $("#attached-file").attr("filename")
+            } else {
+                var attachment = null
+            }
+            var data = {sender: sender, receiver: receiver, message: message,
+                        attachment: attachment}
             $("#disable").show()
             $.ajax({
                 url: "senddata.php",
-                data: {sender: sender, receiver: receiver, message:message},
+                data: data,
                 type: "post",
                 dataType: "JSON",
                 success: function(res) {
