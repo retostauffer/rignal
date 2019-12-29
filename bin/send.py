@@ -25,8 +25,8 @@ if __name__ == "__main__":
         import html
         return("\"{0:s}\"".format(html.escape(x)))
 
-    #args.receiver = "+436803328544"
-    cmd = ["./signal-cli", "-u", args.sender,
+    # TODO FIX PATH !!!
+    cmd = ["/home/retos/.signal/bin/signal-cli", "-u", args.sender,
            "send", "-m", escape(args.message),
            args.receiver]
     #print(json.dumps({"return":" ".join(cmd)}))

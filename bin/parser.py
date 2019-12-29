@@ -54,11 +54,11 @@ if __name__ == "__main__":
     from msghandlerClass import msghandler
     
     db  = msgdb(verbose = verbose)
-    obj = msghandler("messages", verbose)
+    obj = msghandler("testmessages", verbose)
 
     # Loading all users from the database
-    users = db.get_users()
     if args.userlist and args.json:
+        users = db.get_users()
         from json import dumps
         print(dumps(users.data()))
         import sys; sys.exit(0)
@@ -76,12 +76,16 @@ if __name__ == "__main__":
         for rec in obj.iteritems():
             if rec.get("action") in ignore:
                 import sys
-                #print(rec)
-                sys.exit(3)
+                continue
+                print(rec)
+                raise Exception("Ignore action: {:s}".format(rec.get("action")))
             ## Adding message to database
-            #print("_______________________")
-            #print("Adding message to db")
-            #print(rec)
+            logger.info("_______________________")
+            logger.info("Adding message to db")
+            logger.info(rec)
+
+            group = rec.get("group")
+            if not rec.get("group") is None: db.update_group(rec)
             db.add_message(rec)
     
     db.close()

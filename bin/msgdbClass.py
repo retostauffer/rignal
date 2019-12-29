@@ -30,6 +30,56 @@ class msgdb:
         """
         self.con.close() 
 
+
+    # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    def update_group(self, msg):
+        """update_group(msg)
+
+        Update group information, triggered if we have group information
+        in a message.
+
+        Parameters
+        ==========
+        msg : msgparser object
+
+        Returns
+        =======
+        No return, updates database.
+        """
+
+        from msgparserClass import msgparser
+        if not isinstance(msg, msgparser):
+            raise ValueError("input to update_group needs to be a msgparser instance")
+
+        grp = msg.get("group")
+
+        sql1 = "INSERT OR IGNORE INTO groups (id, name, timestamp) VALUES ('{0:s}', '{1:s}', {2:d});"
+        sql2 = "UPDATE groups SET name = '{1:s}', timestamp = {2:d} WHERE id = '{0:s}';"
+        sql1 = sql1.format(grp.get("id"), grp.get("name"), msg.get("timestamp"))
+        sql2 = sql2.format(grp.get("id"), grp.get("name"), msg.get("timestamp"))
+
+        cur = self.con.cursor()
+        try:
+            cur.execute(sql1)
+            cur.execute(sql2)
+            self.con.commit()
+        except Exception as e:
+            print(e)
+            raise Exception("Problems adding new message")
+
+        # Members?
+        if len(grp.get("members")) > 0:
+            groupID = cur.execute("SELECT groupID FROM groups WHERE id = '{0:s}';".format(grp.get("id")))
+            groupID = groupID.fetchone()[0]
+
+            for mem in grp.get("members"):
+                userID = self.get_userID(mem)
+                sql = "INSERT OR IGNORE INTO groupmembers VALUES ({0:d}, {1:d})".format(groupID, userID)
+                print(sql)
+                cur.execute(sql)
+            self.con.commit()
+
     # ------------------------------------------------------------------
     # ------------------------------------------------------------------
     def add_message(self, msg):
@@ -47,7 +97,6 @@ class msgdb:
         """
 
         from msgparserClass import msgparser
-
         if not isinstance(msg, msgparser):
             raise ValueError("input to add_message needs to be a msgparser instance")
 
@@ -71,7 +120,6 @@ class msgdb:
 
         
         cur = self.con.cursor()
-        print(data)
         cur.execute(sql, data)
         try:
             cur.execute(sql, data)
@@ -150,8 +198,10 @@ class msgdb:
             sql = """CREATE TABLE groups (
                     groupID INTEGER PRIMARY KEY AUTOINCREMENT,
                     id TEXT NOT NULL,
+                    name TEXT NOT NULL,
                     timestamp INTEGER NOT NULL,
-                    avatar TEXT
+                    avatar TEXT,
+                    CONSTRAINT gid UNIQUE (id)
                   )"""
             try:
                 cur.execute(sql)
@@ -175,7 +225,7 @@ class msgdb:
             if self.verbose: print("Create groupmembers database table")
 
             sql = """CREATE TABLE groupmembers (
-                    groupID INTEGER PRIMARY KEY AUTOINCREMENT,
+                    groupID INTEGER NOT NULL,
                     userID INTEGER NOT NULL,
                     CONSTRAINT gm UNIQUE (groupID, userID)
                   )"""
@@ -202,7 +252,9 @@ class msgdb:
 
         Returns
         =======
-        Returns the userID (integer) if found, else an error will be raised.
+        Returns the userID (integer) if found. If create is set to True (default)
+        the user will be created if not yet existing and the new ID will be returned.
+        If create is set to False and the user does not exist an error will be raised.
         """
 
         cur = self.con.cursor()
@@ -311,7 +363,12 @@ class msgdb:
         Returns a users object containing the registered users
         """
 
-        sql = "SELECT userID, number, name FROM users ORDER BY userID ASC;"
+        sql = "SELECT u.userID, u.number, u.name, m.timestamp FROM users AS u " + \
+              "LEFT JOIN (" + \
+              "    SELECT userID, max(timestamp) AS timestamp FROM messages " + \
+              "    GROUP BY userID) AS m " + \
+              "ON u.userID = m.useRID " + \
+              "ORDER BY timestamp DESC"
 
         # Loading messages
         res = self.con.cursor().execute(sql)
@@ -365,10 +422,13 @@ class msgs:
 # --------------------------------------------------------------------
 # --------------------------------------------------------------------
 class users:
+
     def __init__(self):
         self._data = []
+
     def __repr__(self):
         return("User list, contains {:d} messages.".format(len(self._data)))
+
     def add(self, user):
         """add(user)
 
@@ -380,6 +440,7 @@ class users:
             raise ValueError("input must be a (well defined) dict!")
 
         self._data.append(user)
+
     def data(self):
         """data()
 

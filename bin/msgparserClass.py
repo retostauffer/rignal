@@ -25,12 +25,19 @@ class msgparser:
 
         self.msg = msg
 
+        logger.debug("--------------------")
+        [logger.debug(x) for x in msg.split("\n")]
+        logger.debug("--------------------")
+
         self._action       = self._get_action()
         self._receiver     = 0;
         self._number       = self._get_number()
         self._timestamp    = self._get_timestamp()
         self._msgtimestamp = self._get_msgtimestamp()
-        self._body         = self._get_body()
+        if self._action in ["RECEIPT", "STARTED", "STOPPED", "DELIVER"]:
+            self._body = "No body (no message body)"
+        else:
+            self._body = self._get_body()
         self._group        = self._get_group()
         self._attachments  = self._get_attachments()
 
@@ -43,8 +50,8 @@ class msgparser:
             res = "Message from {:>18s}\n".format(self.get("number"))
         # Add action
         res += "  Action: {:s}\n".format("None" if self.get("action") is None else self.get("action"))
-        body = self.get("body")
         # Adding body
+        body = self.get("body")
         if body is None:
             res += "  Body is empty"
         elif len(body) > 30:
@@ -81,8 +88,17 @@ class msgparser:
 
     def _get_action(self):
         """Extract action from envelope"""
+
         tmp = re.findall("-\sAction:\s+(.*)", self.msg)
-        if len(tmp) == 0: return None
+        if len(tmp) == 0:
+
+            # TODO: there must be a saver way
+            if len(re.findall("(-\sIs\sread\sreceipt)", self.msg)) > 0:
+                return("RECEIPT")
+            elif len(re.findall("(Got\sreceipt.)", self.msg)) > 0:
+                return("RECEIPT")
+            else:
+                return None
         if not len(tmp) == 1:
             logger.error(self.msg)
             raise Exception("Found \"from\" (sender) != 1 times!")
@@ -119,7 +135,7 @@ class msgparser:
     def _get_body(self):
         """Extract body timestamp from envelope"""
         tmp = re.findall("\nBody: (.*)(?=(Group\sinfo|Profile))", self.msg, re.S)
-        if len(tmp) == 0: return("No body (cares)")
+        #if len(tmp) == 0: return("No body (cares)")
         if not len(tmp) == 1:
             logger.error(tmp)
             logger.error(self.msg)
@@ -159,19 +175,19 @@ class msgparser:
         """
 
         import re
+
         pattern = re.compile("Group\sinfo:\n(.*?)(?=^-)", re.M|re.DOTALL)
         pattern = re.compile("Group\sinfo:\n(.*?)(?=(^Profile\skey|^$))", re.M|re.DOTALL)
-        tmp     = pattern.findall(self.msg)
+        info    = pattern.findall(self.msg)
 
         # No group info: return None
-        if len(tmp) == 0: return None
-        tmp = tmp[0][0]
+        if len(info) == 0: return None
+        info = info[0][0]
 
         # Decoding group information
-        res = msggroupinfo(tmp)
-        logger.debug(res)
+        res = msggroupinfo(info)
 
-
+        return(res)
 
 class msgattachment:
     def __init__(self, mime, path):
@@ -187,11 +203,8 @@ class msgattachment:
 
 
 class msggroupinfo:
-    def __init__(self, msg):
 
-        logger.debug("-----------------------")
-        for rec in msg.split("\n"): logger.debug(rec)
-        logger.debug("-----------------------")
+    def __init__(self, msg):
 
         self.msg = msg
         self._id = self._get_id() 
@@ -201,6 +214,13 @@ class msggroupinfo:
         if self._type == "UPDATE":
             self._members = self._get_members() 
             self._avatar = self._get_avatar() 
+
+    def get(self, what):
+
+        fn = getattr(self, "_get_{0:s}".format(what.lower()))
+        if not callable(fn):
+            raise Exception("No method _get_{0:s} to get {1:s}".format(what.lower(), what))
+        return(fn())
 
     def _get_id(self):
         from re import findall

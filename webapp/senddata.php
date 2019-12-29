@@ -22,6 +22,6 @@ if ($message && $sender && $receiver) {
     #              "receiver" => $receiver,
     #              "message" => $message)));
     #die(0);
-    system(sprintf("cd ../bin && send.py -s %s -r %s -m \"%s\"",
+    system(sprintf("cd ../bin && ./send.py -s %s -r %s -m \"%s\"",
            $sender, $receiver, $message));
 }

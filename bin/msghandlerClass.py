@@ -27,8 +27,7 @@ class msghandler:
         self._messages = []
         for rec in envelops:
             self._messages.append(msgparser(rec))
-
-
+    
     def __repr__(self):
 
         res  = "\nMessage handler object:\n"
